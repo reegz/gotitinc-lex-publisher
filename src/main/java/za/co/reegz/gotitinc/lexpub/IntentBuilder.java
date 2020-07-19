@@ -141,7 +141,7 @@ public class IntentBuilder {
         return sampleUtterances;
     }
 
-    private List<Slot> getSlots(JsonNode aParametersNode) {
+    private List<Slot> getSlots(JsonNode aParametersNode, JsonNode aFollowUpNode) {
         List<Slot> parameterSlots = new ArrayList<>();
         if (aParametersNode.isArray()) {
             Iterator<JsonNode> iter = aParametersNode.elements();
@@ -162,6 +162,10 @@ public class IntentBuilder {
                                         currParam.get("entity_type").asText()
                                 )
                         )
+                        //todo
+                        // lex doesnt like periods, ? etc
+
+                        .withSampleUtterances()
                         .withSlotConstraint(
                                 currParam.get("mandatory").asBoolean() ? "Required" : "Optional")
                         .withPriority(++order);
