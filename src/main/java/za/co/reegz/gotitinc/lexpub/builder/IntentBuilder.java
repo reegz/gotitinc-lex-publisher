@@ -1,4 +1,4 @@
-package za.co.reegz.gotitinc.lexpub;
+package za.co.reegz.gotitinc.lexpub.builder;
 
 import com.amazonaws.services.lexmodelbuilding.AmazonLexModelBuilding;
 import com.amazonaws.services.lexmodelbuilding.model.*;
@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -15,13 +16,11 @@ import java.util.List;
  *
  */
 @Slf4j
-public class IntentBuilder {
+public class IntentBuilder extends AbstractBuilder {
 
     public IntentBuilder(AmazonLexModelBuilding aLexBuilder) {
-        this.lexBuilder = aLexBuilder;
+        super(aLexBuilder);
     }
-
-    AmazonLexModelBuilding lexBuilder;
 
     /**
      * A <code>JsonNode</code> object containing the intents that need to be built in Lex.
@@ -43,16 +42,18 @@ public class IntentBuilder {
         PutIntentRequest request = new PutIntentRequest()
                 .withName(cleanObjectName(aJsonNodeIntent.get("id").asText()))
                 .withSlots(
-                        getSlots(aJsonNodeIntent.get("parameters"))
+                        getSlots(aJsonNodeIntent.get("parameters"),
+                                aJsonNodeIntent.get("followup_utterances"))
                 )
                 .withSampleUtterances(
                         getUtterances(aJsonNodeIntent.get("utterances"))
                 )
-                // Call Webhook here
                 .withFulfillmentActivity(
                         new FulfillmentActivity()
-                                .withType("ReturnIntent")
-//                        .withCodeHook()
+                                .withType(FulfillmentActivityType.CodeHook)
+                                .withCodeHook(
+                                        new CodeHook().withMessageVersion("1.0")
+                                                .withUri("arn:aws:lambda:us-east-1:687787444107:function:test"))
                 )
                 .withConclusionStatement(
                         new Statement()
@@ -62,9 +63,12 @@ public class IntentBuilder {
                                         .withContentType("PlainText")
                         )
                 )
-                .withCreateVersion(true);
+                .withCreateVersion(false); //Set to false so that we don't have to go fishing for the latest version.
         request.setChecksum(getCheckSum(request.getName()));
-        lexBuilder.putIntent(request);
+        PutIntentResult result = lexBuilder.putIntent(request);
+        builtIntents.add((new Intent())
+                .withIntentName(result.getName())
+                .withIntentVersion(result.getVersion()));
     }
 
     /**
@@ -89,19 +93,6 @@ public class IntentBuilder {
     }
 
     /**
-     * Clean out the name to match Lex's naming standards.
-     *
-     * @param aOriginalName
-     * @return
-     */
-    private String cleanObjectName(String aOriginalName) {
-        return aOriginalName.replace("@", "")
-                .replace("-", "_")
-                .replace(" ", "")
-                .replaceAll("\\d","");
-    }
-
-    /**
      * Convert the Json Array into a list of <code>String</code>'s which represent the sample utterances for the intent.
      *
      * @param aJsonNodeUtterance
@@ -120,18 +111,15 @@ public class IntentBuilder {
                         if (arrayNode.get(i).get("alias") != null
                             && arrayNode.get(i).get("entity_type") != null) {
                             str = str.concat("{")
-//                                    .concat(arrayNode.get(i).get("alias").textValue())
-
                                     .concat(
-                                            LexPublisherApplication.slotNameMapper.get(
+                                            AbstractBuilder.slotNameMapper.get(
                                                     arrayNode.get(i).get("alias").textValue()
                                             ))
-
-//                                    .concat(LexPublisherApplication.slotTypeMapper.get(
-//                                            arrayNode.get(i).get("entity_type").textValue()))
                                     .concat("}");
                         } else {
-                            str = str.concat(arrayNode.get(i).get("text").asText());
+                            str = str.concat(
+                                    removePunctuation(arrayNode.get(i).get("text").asText())
+                            );
                         }
                     }
                     sampleUtterances.add(str);
@@ -141,6 +129,13 @@ public class IntentBuilder {
         return sampleUtterances;
     }
 
+    /**
+     *
+     *
+     * @param aParametersNode
+     * @param aFollowUpNode
+     * @return
+     */
     private List<Slot> getSlots(JsonNode aParametersNode, JsonNode aFollowUpNode) {
         List<Slot> parameterSlots = new ArrayList<>();
         if (aParametersNode.isArray()) {
@@ -150,29 +145,31 @@ public class IntentBuilder {
                 JsonNode currParam = iter.next();
                 log.debug(currParam.get("entity_type").asText());
 
-                LexPublisherApplication.slotNameMapper.put(
+                AbstractBuilder.slotNameMapper.put(
                         currParam.get("id").asText(),
                         cleanObjectName(currParam.get("friendly_name").asText()));
 
                 Slot tmp = new Slot()
-                        .withDescription(cleanObjectName(currParam.get("id").asText()))
-                        .withName(cleanObjectName(currParam.get("friendly_name").asText()))
+                        .withDescription(
+                                cleanObjectName(currParam.get("id").asText()))
+                        .withName(
+                                cleanObjectName(currParam.get("friendly_name").asText()))
                         .withSlotType(
-                                LexPublisherApplication.slotTypeMapper.get(
-                                        currParam.get("entity_type").asText()
-                                )
+                                AbstractBuilder.slotTypeMapper.get(currParam.get("entity_type").asText()))
+                        .withSampleUtterances(
+                                getSampleUtterances(cleanObjectName(currParam.get("friendly_name").asText()), aFollowUpNode))
+                        .withValueElicitationPrompt(
+                                new Prompt().withMessages(
+                                        Collections.singletonList(
+                                                new Message().withContent("Dummy").withContentType(ContentType.PlainText)))
+                                .withMaxAttempts(3)
                         )
-                        //todo
-                        // lex doesnt like periods, ? etc
-
-                        .withSampleUtterances()
-                        .withSlotConstraint(
-                                currParam.get("mandatory").asBoolean() ? "Required" : "Optional")
+                        .withSlotConstraint(currParam.get("mandatory").asBoolean() ? "Required" : "Optional")
                         .withPriority(++order);
                 // Don't set a version for built-in slots.
                 if (!tmp.getSlotType().startsWith("AMAZON")) {
-//                    tmp.setSlotTypeVersion("$LATEST");
-                    tmp.setSlotTypeVersion(getLatestSlotVersion(tmp.getSlotType()));
+                    tmp.setSlotTypeVersion("$LATEST");
+//                    tmp.setSlotTypeVersion(getLatestSlotVersion(tmp.getSlotType()));
                 }
                 parameterSlots.add(tmp);
             }
@@ -180,9 +177,15 @@ public class IntentBuilder {
         return parameterSlots;
     }
 
-    private String getLatestSlotVersion(String aSlotType) {
+    /**
+     * Supposedly gets the latest numeric version of the slot identified by the given name.
+     *
+     * @param aSlotTypeName
+     * @return
+     */
+    private String getLatestSlotVersion(String aSlotTypeName) {
         GetSlotTypeVersionsRequest request = new GetSlotTypeVersionsRequest()
-                .withName(aSlotType)
+                .withName(aSlotTypeName)
                 .withMaxResults(20);
         GetSlotTypeVersionsResult result = lexBuilder.getSlotTypeVersions(request);
         return String.valueOf(
@@ -191,5 +194,20 @@ public class IntentBuilder {
                             x.getVersion().equals("$LATEST") ? 0 : Integer.valueOf(x.getVersion()))
                     .max()
                     .orElse(1));
+    }
+
+
+    private List<String> getSampleUtterances(String aSlotTypeName, JsonNode aJsonNodeSampleUtterances) {
+        if (aJsonNodeSampleUtterances.isArray()) {
+            ArrayNode sampleUtterArr = (ArrayNode) aJsonNodeSampleUtterances;
+            if (sampleUtterArr.size() > 0) {
+                Iterator<JsonNode> iter = sampleUtterArr.elements();
+                while (iter.hasNext()) {
+                    JsonNode currPart = iter.next();
+                    log.debug(currPart.toPrettyString());
+                }
+            }
+        }
+        return Collections.emptyList();
     }
 }

@@ -1,4 +1,4 @@
-package za.co.reegz.gotitinc.lexpub;
+package za.co.reegz.gotitinc.lexpub.builder;
 
 import com.amazonaws.services.lexmodelbuilding.AmazonLexModelBuilding;
 import com.amazonaws.services.lexmodelbuilding.model.*;
@@ -13,13 +13,11 @@ import java.util.*;
  *
  */
 @Slf4j
-public class SlotBuilder {
+public class SlotBuilder extends AbstractBuilder {
 
     public SlotBuilder(AmazonLexModelBuilding aLexBuilder) {
-        this.lexBuilder = aLexBuilder;
+        super(aLexBuilder);
     }
-
-    AmazonLexModelBuilding lexBuilder;
 
     /**
      * A <code>JsonNode</code> object containing the custom entities that need to be converted into custom Lex slot types.
@@ -50,8 +48,8 @@ public class SlotBuilder {
                 .withDescription(cleanObjectName(aJsonNodeSlot.get("entity_type").asText()))
                 .withEnumerationValues(getEnumerationValues(aJsonNodeSlot.get("dictionary")))
                 .withValueSelectionStrategy(SlotValueSelectionStrategy.TOP_RESOLUTION)
-                .withCreateVersion(true);
-        LexPublisherApplication.slotTypeMapper.put(
+                .withCreateVersion(false); //Set to false so that we don't have to go fishing for the latest version.
+        AbstractBuilder.slotTypeMapper.put(
                 aJsonNodeSlot.get("entity_type").asText(),
                 request.getName());
         request.setChecksum(getCheckSum(request.getName()));
@@ -77,19 +75,6 @@ public class SlotBuilder {
             log.error(e.getMessage(), e);
         }
         return null;
-    }
-
-    /**
-     * Clean out the name to match Lex's naming standards.
-     *
-     * @param aOriginalName
-     * @return
-     */
-    private String cleanObjectName(String aOriginalName) {
-        return aOriginalName.replace("@", "")
-                .replace("-", "_")
-                .replace(" ", "")
-                .replaceAll("\\d","");
     }
 
     /**

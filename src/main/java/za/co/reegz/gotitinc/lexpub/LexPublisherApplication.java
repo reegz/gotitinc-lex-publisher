@@ -3,6 +3,9 @@ package za.co.reegz.gotitinc.lexpub;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.regions.Regions;
+import com.amazonaws.services.lambda.AWSLambda;
+import com.amazonaws.services.lambda.AWSLambdaClientBuilder;
+import com.amazonaws.services.lambda.model.AddPermissionRequest;
 import com.amazonaws.services.lexmodelbuilding.AmazonLexModelBuilding;
 import com.amazonaws.services.lexmodelbuilding.AmazonLexModelBuildingClientBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -11,10 +14,11 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.stereotype.Component;
+import za.co.reegz.gotitinc.lexpub.builder.BotBuilder;
+import za.co.reegz.gotitinc.lexpub.builder.IntentBuilder;
+import za.co.reegz.gotitinc.lexpub.builder.SlotBuilder;
 
 import java.io.FileReader;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Base application class.
@@ -32,13 +36,7 @@ public class LexPublisherApplication {
 
     private IntentBuilder intentBuilder;
 
-    static Map<String, String> slotTypeMapper = new HashMap<String, String>() {{
-        put("@sys.geo-state", "AMAZON.US_STATE");
-        put("@sys.date-time", "AMAZON.DATE");
-        put("@sys.number", "AMAZON.NUMBER");
-    }};
-
-    static Map<String, String> slotNameMapper = new HashMap<>();
+    private BotBuilder botBuilder;
 
     /**
      * Converts the custom Indie file into an AWS Lex bot using the AWS Lex Model Building API.
@@ -56,8 +54,17 @@ public class LexPublisherApplication {
                     .withRegion(Regions.fromName(aRegion))
                     .build();
 
+            AWSLambda awsLambda = AWSLambdaClientBuilder.standard().withCredentials(
+                            new AWSStaticCredentialsProvider(
+                                    new BasicAWSCredentials(aAccessKey, aSecretKey)))
+                    .withRegion(Regions.fromName(aRegion))
+                    .build();
+
+            setWebhookPermissions(awsLambda);
+
             slotBuilder = new SlotBuilder(lexModelBuilder);
             intentBuilder = new IntentBuilder(lexModelBuilder);
+            botBuilder = new BotBuilder(lexModelBuilder);
 
             ObjectMapper mapper = new ObjectMapper();
             JsonNode root = mapper.readTree(new FileReader(aFileLocation));
@@ -66,10 +73,22 @@ public class LexPublisherApplication {
             JsonNode customIntents = root.get("intents");
             slotBuilder.buildCustomSlotTypes(customEntities);
             intentBuilder.buildIntents(customIntents);
-
+            botBuilder.buildBot(root);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
+    }
+
+    private void setWebhookPermissions(AWSLambda awsLambda) {
+        AddPermissionRequest request = new AddPermissionRequest()
+                .withAction("lambda:InvokeFunction")
+                .withFunctionName("test")
+//                .withSourceArn("arn:aws:lambda:us-east-1:687787444107:function:test")
+                .withStatementId("chatbot-fulfillment")
+                .withPrincipal("lex.amazonaws.com");
+        awsLambda.addPermission(request);
+
+//        aws lambda add-permission --function-name <lambda_name> --statement-id chatbot-fulfillment --action "lambda:InvokeFunction" --principal "lex.amazonaws.com"
     }
 
     public static void main(String[] args) {
