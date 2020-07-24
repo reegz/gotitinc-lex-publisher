@@ -1,7 +1,5 @@
 {
-  "name": "Simple Test Bot",
   "description": "Simplified InDiE file format",
-  "abort_statement": "Whoops! Somethings gone wrong.",
   "source_indie_file": "/Users/amolk/work/gotit/tutoruniverse/dialogflow_publisher/data/InDiE_0.3_Echo_20200612184151.json",
   "custom_entities": {
     "dim_customer.preferred_channel1": {

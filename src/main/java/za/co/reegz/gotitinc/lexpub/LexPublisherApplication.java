@@ -6,6 +6,7 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.AWSLambda;
 import com.amazonaws.services.lambda.AWSLambdaClientBuilder;
 import com.amazonaws.services.lambda.model.AddPermissionRequest;
+import com.amazonaws.services.lambda.model.RemovePermissionRequest;
 import com.amazonaws.services.lexmodelbuilding.AmazonLexModelBuilding;
 import com.amazonaws.services.lexmodelbuilding.AmazonLexModelBuildingClientBuilder;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,7 +43,8 @@ public class LexPublisherApplication {
      * Converts the custom Indie file into an AWS Lex bot using the AWS Lex Model Building API.
      *
      */
-    private void convertJsonToLex(String aAccessKey, String aSecretKey, String aRegion, String aFileLocation) {
+    private void convertJsonToLex(String aAccessKey, String aSecretKey, String aRegion,
+                                  String aFileLocation, String aFulfillmentLambdaARN) {
         log.debug("aAccessKey: {}, \naSecretKey: {}\naRegion: {}", aAccessKey, aSecretKey, aRegion);
         log.debug("Building bot from source file - {}", aFileLocation);
         try {
@@ -60,39 +62,59 @@ public class LexPublisherApplication {
                     .withRegion(Regions.fromName(aRegion))
                     .build();
 
-            setWebhookPermissions(awsLambda);
-
             slotBuilder = new SlotBuilder(lexModelBuilder);
             intentBuilder = new IntentBuilder(lexModelBuilder);
             botBuilder = new BotBuilder(lexModelBuilder);
 
+            log.debug("Fetching JSON input source.");
             ObjectMapper mapper = new ObjectMapper();
             JsonNode root = mapper.readTree(new FileReader(aFileLocation));
-//            log.debug(root.toPrettyString());
+            setWebhookPermissions(aFulfillmentLambdaARN, awsLambda);
             JsonNode customEntities = root.get("custom_entities");
             JsonNode customIntents = root.get("intents");
             slotBuilder.buildCustomSlotTypes(customEntities);
-            intentBuilder.buildIntents(customIntents);
+//            Thread.sleep(10000);
+            intentBuilder.buildIntents(customIntents, aFulfillmentLambdaARN);
+//            Thread.sleep(10000);
             botBuilder.buildBot(root);
+            log.debug("Process completed.");
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
     }
 
-    private void setWebhookPermissions(AWSLambda awsLambda) {
-        AddPermissionRequest request = new AddPermissionRequest()
-                .withAction("lambda:InvokeFunction")
-                .withFunctionName("test")
-//                .withSourceArn("arn:aws:lambda:us-east-1:687787444107:function:test")
-                .withStatementId("chatbot-fulfillment")
-                .withPrincipal("lex.amazonaws.com");
-        awsLambda.addPermission(request);
 
-//        aws lambda add-permission --function-name <lambda_name> --statement-id chatbot-fulfillment --action "lambda:InvokeFunction" --principal "lex.amazonaws.com"
+    /**
+     * Ensure the correct permissions are set on the Lambda.
+     *
+     * @param aFunctionName
+     * @param awsLambda
+     */
+    private void setWebhookPermissions(String aFunctionName, AWSLambda awsLambda) {
+        log.debug("Setting permissions for fulfillment web hook.");
+        try {
+            RemovePermissionRequest remove = new RemovePermissionRequest()
+                    .withFunctionName(aFunctionName)
+                    .withStatementId("chatbot-fulfillment");
+            awsLambda.removePermission(remove);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+        try {
+            AddPermissionRequest request = new AddPermissionRequest()
+                    .withAction("lambda:InvokeFunction")
+                    .withFunctionName(aFunctionName)
+                    .withStatementId("chatbot-fulfillment")
+                    .withPrincipal("lex.amazonaws.com");
+            awsLambda.addPermission(request);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
     }
 
     public static void main(String[] args) {
-        new LexPublisherApplication().convertJsonToLex(args[0], args[1], args[2], args[3]);
+        String fulfillmentLambdaARN = "arn:aws:lambda:us-east-1:687787444107:function:lexInvokeIndieWebhook";
+        new LexPublisherApplication().convertJsonToLex(args[0], args[1], args[2], args[3], fulfillmentLambdaARN);
     }
 
 }

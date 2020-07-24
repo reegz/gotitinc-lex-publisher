@@ -25,6 +25,7 @@ public class SlotBuilder extends AbstractBuilder {
      * @param aJsonNode
      */
     public void buildCustomSlotTypes(JsonNode aJsonNode) {
+        log.debug("Building slot types.");
         aJsonNode.iterator().forEachRemaining(
                 x -> createSlotType(x)
         );
@@ -36,7 +37,6 @@ public class SlotBuilder extends AbstractBuilder {
      * @param aJsonNodeSlot
      */
     private void createSlotType(JsonNode aJsonNodeSlot) {
-        log.debug(aJsonNodeSlot.toPrettyString());
         PutSlotTypeRequest request = new PutSlotTypeRequest()
                 .withName(cleanObjectName(
                         aJsonNodeSlot.get("table").asText()
@@ -49,6 +49,7 @@ public class SlotBuilder extends AbstractBuilder {
                 .withEnumerationValues(getEnumerationValues(aJsonNodeSlot.get("dictionary")))
                 .withValueSelectionStrategy(SlotValueSelectionStrategy.TOP_RESOLUTION)
                 .withCreateVersion(false); //Set to false so that we don't have to go fishing for the latest version.
+
         AbstractBuilder.slotTypeMapper.put(
                 aJsonNodeSlot.get("entity_type").asText(),
                 request.getName());
@@ -63,10 +64,11 @@ public class SlotBuilder extends AbstractBuilder {
      * @return
      */
     private String getCheckSum(String aSlotName) {
+        log.debug("Getting checksum for slot with name {}", aSlotName);
         try {
             GetSlotTypeRequest request = new GetSlotTypeRequest();
             request.setName(aSlotName);
-            request.setVersion("$LATEST");
+            request.setVersion(LATEST_VERSION);
             GetSlotTypeResult response = lexBuilder.getSlotType(request);
             if (response != null && response.getName() != null) {
                 return response.getChecksum();

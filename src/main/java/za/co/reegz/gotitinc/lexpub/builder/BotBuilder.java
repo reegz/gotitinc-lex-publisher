@@ -20,19 +20,26 @@ public class BotBuilder extends AbstractBuilder {
      * @param aJsonNode
      */
     public void buildBot(JsonNode aJsonNode) {
+        log.debug("Building bot.");
         PutBotRequest request = new PutBotRequest()
-                .withName("Test")
-                .withDescription(aJsonNode.get("description").asText())
+                .withName(
+                        cleanObjectName(aJsonNode.get("name").asText()))
+                .withDescription(
+                        aJsonNode.get("description").asText())
                 .withCreateVersion(false)
                 .withChildDirected(false)
                 .withLocale(Locale.EnUS)
                 .withIntents(builtIntents)
-                .withChecksum(getCheckSum("Test"))
-                .withAbortStatement(new Statement().withMessages(
-                        Collections.singletonList(
-                                new Message().withContentType(ContentType.PlainText).withContent("Uh oh! Looks like I don't understand that..."))
-                ));
-        PutBotResult result = lexBuilder.putBot(request);
+                .withChecksum(
+                        getCheckSum(cleanObjectName(aJsonNode.get("name").asText())))
+                .withAbortStatement(
+                        new Statement().withMessages(
+                                Collections.singletonList(
+                                        new Message()
+                                                .withContentType(ContentType.PlainText)
+                                                .withContent(aJsonNode.get("abort_statement").asText())
+                )));
+        lexBuilder.putBot(request);
     }
 
     /**
@@ -42,10 +49,11 @@ public class BotBuilder extends AbstractBuilder {
      * @return
      */
     private String getCheckSum(String aBotName) {
+        log.debug("Getting Bot checksum.");
         try {
             GetBotRequest request = new GetBotRequest();
             request.setName(aBotName);
-            request.setVersionOrAlias("$LATEST");
+            request.setVersionOrAlias(LATEST_VERSION);
             GetBotResult response = lexBuilder.getBot(request);
             if (response != null && response.getName() != null) {
                 return response.getChecksum();

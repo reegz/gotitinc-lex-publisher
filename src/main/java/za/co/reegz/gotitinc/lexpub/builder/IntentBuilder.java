@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * This class focuses on building up Lex intents with their associated data.
@@ -27,10 +28,33 @@ public class IntentBuilder extends AbstractBuilder {
      *
      * @param aJsonNode
      */
-    public void buildIntents(JsonNode aJsonNode) {
+    public void buildIntents(JsonNode aJsonNode, String aFulfillmentLambdaARN) {
         aJsonNode.iterator().forEachRemaining(
-                x -> createIntent(x)
+                x -> mapSlotNames(x)
         );
+        aJsonNode.iterator().forEachRemaining(
+                x -> createIntent(x, aFulfillmentLambdaARN)
+        );
+    }
+
+    /**
+     * Create the static map of slot names for use in later processing.
+     *
+     * @param jsonNode
+     */
+    private void mapSlotNames(JsonNode jsonNode) {
+        log.debug("Mapping slot names.");
+        if (jsonNode.get("parameters").isArray()) {
+            Iterator<JsonNode> iter = jsonNode.get("parameters").elements();
+            while (iter.hasNext()) {
+                JsonNode currParam = iter.next();
+                log.debug(currParam.get("entity_type").asText());
+
+                AbstractBuilder.slotNameMapper.put(
+                        currParam.get("id").asText(),
+                        cleanObjectName(currParam.get("friendly_name").asText()));
+            }
+        }
     }
 
     /**
@@ -38,7 +62,8 @@ public class IntentBuilder extends AbstractBuilder {
      *
      * @param aJsonNodeIntent
      */
-    private void createIntent(JsonNode aJsonNodeIntent) {
+    private void createIntent(JsonNode aJsonNodeIntent, String aFulfillmentLambdaARN) {
+        log.debug("Creating intents.");
         PutIntentRequest request = new PutIntentRequest()
                 .withName(cleanObjectName(aJsonNodeIntent.get("id").asText()))
                 .withSlots(
@@ -53,8 +78,7 @@ public class IntentBuilder extends AbstractBuilder {
                                 .withType(FulfillmentActivityType.CodeHook)
                                 .withCodeHook(
                                         new CodeHook().withMessageVersion("1.0")
-                                                .withUri("arn:aws:lambda:us-east-1:687787444107:function:test"))
-                )
+                                                .withUri(aFulfillmentLambdaARN)))
                 .withConclusionStatement(
                         new Statement()
                         .withMessages(
@@ -64,7 +88,9 @@ public class IntentBuilder extends AbstractBuilder {
                         )
                 )
                 .withCreateVersion(false); //Set to false so that we don't have to go fishing for the latest version.
+//                .withCreateVersion(true);
         request.setChecksum(getCheckSum(request.getName()));
+
         PutIntentResult result = lexBuilder.putIntent(request);
         builtIntents.add((new Intent())
                 .withIntentName(result.getName())
@@ -81,13 +107,14 @@ public class IntentBuilder extends AbstractBuilder {
         try {
             GetIntentRequest request = new GetIntentRequest();
             request.setName(aSlotName);
-            request.setVersion("$LATEST");
+            request.setVersion(LATEST_VERSION);
+//            request.setVersion(getLatestSlotVersion(aSlotName));
             GetIntentResult response = lexBuilder.getIntent(request);
             if (response != null && response.getName() != null) {
                 return response.getChecksum();
             }
         } catch (Exception e) {
-            log.error(e.getMessage(), e);
+//            log.error(e.getMessage(), e);
         }
         return null;
     }
@@ -99,6 +126,7 @@ public class IntentBuilder extends AbstractBuilder {
      * @return
      */
     private List<String> getUtterances(JsonNode aJsonNodeUtterance) {
+        log.debug("Building utterances.");
         List<String> sampleUtterances = new ArrayList<>();
         if (aJsonNodeUtterance.isArray()) {
             Iterator<JsonNode> iter = aJsonNodeUtterance.elements();
@@ -137,6 +165,7 @@ public class IntentBuilder extends AbstractBuilder {
      * @return
      */
     private List<Slot> getSlots(JsonNode aParametersNode, JsonNode aFollowUpNode) {
+        log.debug("Building slots.");
         List<Slot> parameterSlots = new ArrayList<>();
         if (aParametersNode.isArray()) {
             Iterator<JsonNode> iter = aParametersNode.elements();
@@ -145,9 +174,9 @@ public class IntentBuilder extends AbstractBuilder {
                 JsonNode currParam = iter.next();
                 log.debug(currParam.get("entity_type").asText());
 
-                AbstractBuilder.slotNameMapper.put(
+                /*AbstractBuilder.slotNameMapper.put(
                         currParam.get("id").asText(),
-                        cleanObjectName(currParam.get("friendly_name").asText()));
+                        cleanObjectName(currParam.get("friendly_name").asText()));*/
 
                 Slot tmp = new Slot()
                         .withDescription(
@@ -157,7 +186,7 @@ public class IntentBuilder extends AbstractBuilder {
                         .withSlotType(
                                 AbstractBuilder.slotTypeMapper.get(currParam.get("entity_type").asText()))
                         .withSampleUtterances(
-                                getSampleUtterances(cleanObjectName(currParam.get("friendly_name").asText()), aFollowUpNode))
+                                getSlotSampleUtterances(currParam.get("id").asText(), aFollowUpNode))
                         .withValueElicitationPrompt(
                                 new Prompt().withMessages(
                                         Collections.singletonList(
@@ -168,8 +197,8 @@ public class IntentBuilder extends AbstractBuilder {
                         .withPriority(++order);
                 // Don't set a version for built-in slots.
                 if (!tmp.getSlotType().startsWith("AMAZON")) {
-                    tmp.setSlotTypeVersion("$LATEST");
-//                    tmp.setSlotTypeVersion(getLatestSlotVersion(tmp.getSlotType()));
+                    tmp.setSlotTypeVersion(LATEST_VERSION);
+//                    tmp.setSlotTypeVersion(getLatestSlotVersion(cleanObjectName(currParam.get("friendly_name").asText())));
                 }
                 parameterSlots.add(tmp);
             }
@@ -184,30 +213,71 @@ public class IntentBuilder extends AbstractBuilder {
      * @return
      */
     private String getLatestSlotVersion(String aSlotTypeName) {
+        log.debug("Getting latest slot version for slot with name {}", aSlotTypeName);
         GetSlotTypeVersionsRequest request = new GetSlotTypeVersionsRequest()
                 .withName(aSlotTypeName)
-                .withMaxResults(20);
+                .withMaxResults(50);
         GetSlotTypeVersionsResult result = lexBuilder.getSlotTypeVersions(request);
         return String.valueOf(
                 result.getSlotTypes().stream()
                     .mapToInt(x ->
-                            x.getVersion().equals("$LATEST") ? 0 : Integer.valueOf(x.getVersion()))
+                            x.getVersion().equals(LATEST_VERSION) ? 0 : Integer.valueOf(x.getVersion()))
                     .max()
                     .orElse(1));
     }
 
 
-    private List<String> getSampleUtterances(String aSlotTypeName, JsonNode aJsonNodeSampleUtterances) {
+    /**
+     * Build up a <code>List</code> of sample utterances with which to invoke the intent.
+     *
+     * @param aJsonNodeSampleUtterances
+     * @return
+     */
+    private List<String> getSlotSampleUtterances(String aParamName, JsonNode aJsonNodeSampleUtterances) {
+        log.debug("Looking for slot prompts for slot with name {}", aParamName);
+        List<String> sampleUtterances = new ArrayList<>();
         if (aJsonNodeSampleUtterances.isArray()) {
             ArrayNode sampleUtterArr = (ArrayNode) aJsonNodeSampleUtterances;
             if (sampleUtterArr.size() > 0) {
                 Iterator<JsonNode> iter = sampleUtterArr.elements();
                 while (iter.hasNext()) {
                     JsonNode currPart = iter.next();
-                    log.debug(currPart.toPrettyString());
+                    if (currPart.get("parts").isArray()) {
+                        ArrayNode currPartArr = (ArrayNode) currPart.get("parts");
+                        String sampleSlotUtterance = "";
+                        boolean shouldAdd = false;
+                        Iterator<JsonNode> iter2 = currPartArr.elements();
+                        while (iter2.hasNext()) {
+                            JsonNode currStr = iter2.next();
+                            log.debug(aParamName);
+                            if (currStr.has("alias")) {
+                                log.debug(currStr.toPrettyString());
+                                log.debug("the alias is....{}",currStr.get("alias").asText());
+                                log.debug("currStr.get(\"alias\").asText().equals(aParamName)= {}", currStr.get("alias").asText().equals(aParamName));
+
+                                sampleSlotUtterance = sampleSlotUtterance.concat("{")
+                                        .concat(
+                                                AbstractBuilder.slotNameMapper.get(
+                                                        currStr.get("alias").textValue()
+                                                ))
+                                        .concat("}");
+                            } else {
+                                sampleSlotUtterance = sampleSlotUtterance.concat(currStr.get("text").asText());
+                            }
+
+                            if (currStr.has("alias")
+                                    && currStr.get("alias").asText().equals(aParamName) ) {
+                                shouldAdd = true;
+                            }
+                        }
+                        if (shouldAdd) {
+                            log.debug("Adding slot utterance for slot {}", aParamName);
+                            sampleUtterances.add(sampleSlotUtterance);
+                        }
+                    }
                 }
             }
         }
-        return Collections.emptyList();
+        return sampleUtterances.stream().distinct().collect(Collectors.toList());
     }
 }

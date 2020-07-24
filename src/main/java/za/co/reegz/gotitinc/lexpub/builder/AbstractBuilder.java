@@ -10,6 +10,8 @@ import java.util.Map;
 
 public abstract class AbstractBuilder {
 
+    static final String LATEST_VERSION = "$LATEST";
+
     static Map<String, String> slotTypeMapper = new HashMap<String, String>() {{
         put("@sys.geo-state", "AMAZON.US_STATE");
         put("@sys.date-time", "AMAZON.DATE");
