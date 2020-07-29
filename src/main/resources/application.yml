@@ -1,22 +1,6 @@
 ---
 spring:
 
-cloud:
-  aws:
-    credentials:
-      accessKey: AKIA2AI2TQ6F3VIB6DOV
-      secretKey: "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"
-      instanceProfile: false
-    region:
-      static: us-east-1
-      auto: false
-    stack:
-      auto: false
-
-server:
-  security:
-    enabled: false
-
 logging:
   level:
     ROOT: INFO
