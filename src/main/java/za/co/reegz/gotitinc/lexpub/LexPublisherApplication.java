@@ -73,9 +73,7 @@ public class LexPublisherApplication {
             JsonNode customEntities = root.get("custom_entities");
             JsonNode customIntents = root.get("intents");
             slotBuilder.buildCustomSlotTypes(customEntities);
-//            Thread.sleep(10000);
             intentBuilder.buildIntents(customIntents, aFulfillmentLambdaARN);
-//            Thread.sleep(10000);
             botBuilder.buildBot(root);
             log.debug("Process completed.");
         } catch (Exception e) {
@@ -112,9 +110,18 @@ public class LexPublisherApplication {
         }
     }
 
+    /**
+     * Ye good old main method!
+     *
+     * @param args
+     */
     public static void main(String[] args) {
-        String fulfillmentLambdaARN = "arn:aws:lambda:us-east-1:687787444107:function:lexInvokeIndieWebhook";
-        new LexPublisherApplication().convertJsonToLex(args[0], args[1], args[2], args[3], fulfillmentLambdaARN);
+        String accesskey = args[0];
+        String secretKey = args[1];
+        String awsRegion = args[2];
+        String fileLocation = args[3];
+        String fulfillmentLambdaARN = args[4];
+        new LexPublisherApplication().convertJsonToLex(accesskey, secretKey, awsRegion, fileLocation, fulfillmentLambdaARN);
     }
 
 }

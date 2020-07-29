@@ -8,10 +8,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Parent for all builder classes.
+ *
+ */
 public abstract class AbstractBuilder {
 
     static final String LATEST_VERSION = "$LATEST";
 
+    /**
+     * Hard-coded mapping of Google DialogFlow entities to AWS Lex slot types.
+     */
     static Map<String, String> slotTypeMapper = new HashMap<String, String>() {{
         put("@sys.geo-state", "AMAZON.US_STATE");
         put("@sys.date-time", "AMAZON.DATE");

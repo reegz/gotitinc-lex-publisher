@@ -190,6 +190,7 @@ public class IntentBuilder extends AbstractBuilder {
                         .withValueElicitationPrompt(
                                 new Prompt().withMessages(
                                         Collections.singletonList(
+                                                // This value should come from the file at a later stage.
                                                 new Message().withContent("Dummy").withContentType(ContentType.PlainText)))
                                 .withMaxAttempts(3)
                         )
@@ -249,12 +250,7 @@ public class IntentBuilder extends AbstractBuilder {
                         Iterator<JsonNode> iter2 = currPartArr.elements();
                         while (iter2.hasNext()) {
                             JsonNode currStr = iter2.next();
-                            log.debug(aParamName);
                             if (currStr.has("alias")) {
-                                log.debug(currStr.toPrettyString());
-                                log.debug("the alias is....{}",currStr.get("alias").asText());
-                                log.debug("currStr.get(\"alias\").asText().equals(aParamName)= {}", currStr.get("alias").asText().equals(aParamName));
-
                                 sampleSlotUtterance = sampleSlotUtterance.concat("{")
                                         .concat(
                                                 AbstractBuilder.slotNameMapper.get(
