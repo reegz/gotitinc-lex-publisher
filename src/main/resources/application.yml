@@ -22,12 +22,6 @@ logging:
     ROOT: INFO
     org.springframework: INFO
     org.springframework.web: INFO
-    feign: ERROR
     za.co.reegz: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-
-application:
-
-  lex:
-    basePrefix: gotit
