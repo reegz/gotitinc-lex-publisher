@@ -45,7 +45,6 @@ public class LexPublisherApplication {
      */
     private void convertJsonToLex(String aAccessKey, String aSecretKey, String aRegion,
                                   String aFileLocation, String aFulfillmentLambdaARN) {
-        log.debug("aAccessKey: {}, \naSecretKey: {}\naRegion: {}", aAccessKey, aSecretKey, aRegion);
         log.debug("Building bot from source file - {}", aFileLocation);
         try {
             /* Create the model builder using credentials from command line.  */
